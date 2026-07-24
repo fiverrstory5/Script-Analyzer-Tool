@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Script Analyzer & Player</title>
+    <link rel="icon" type="image/x-icon" href="Script_Analyzer_Tool_Logo.ico">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333; padding: 20px; }
+        .max-width { max-width: 96%; margin: 0 auto; position: relative; }
+        h1 { text-align: center; color: #2c3e50; }
+
+        /* प्रोग्रेस रीसेट करने का बटन */
+        .reset-btn { position: absolute; top: 10px; right: 0; background-color: #7f8c8d; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 14px; }
+        .reset-btn:hover { background-color: #95a5a6; }
+
+        /* ======================================================
+           FLOATING CONTROLS — Bottom-Right Corner
+           ====================================================== */
+        .floating-controls {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .floating-controls button {
+            box-shadow: 0 4px 18px rgba(0,0,0,0.25);
+            border-radius: 30px !important;
+            padding: 10px 20px !important;
+            font-size: 14px !important;
+            backdrop-filter: blur(4px);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease !important;
+        }
+
+        .floating-controls button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.30);
+            opacity: 1 !important;
+        }
+
+        /* Auto-Play button — grey by default, green when ON */
+        .btn-autoplay { background-color: #7f8c8d; }
+        .btn-autoplay.active { background-color: #27ae60; }
+
+        /* Drill Mode button */
+        .btn-drill { background-color: #8e44ad; }
+
+        /* Pop Out (PiP) button */
+        .btn-pip { background-color: #16a085; }
+        .btn-pip.pip-on { background-color: #1abc9c; box-shadow: 0 0 0 3px rgba(26,188,156,0.4), 0 4px 18px rgba(0,0,0,0.25) !important; }
+
+        /* ======================================================
+           DRILL POPUP OVERLAY
+           ====================================================== */
+
+        /* Dark backdrop behind the popup */
+        .drill-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 1100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+
+        /* The popup card itself */
+        .drill-panel {
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+            padding: 24px 28px;
+            width: 90%;
+            max-width: 480px;
+            border-top: 5px solid #8e44ad;
+            position: relative;
+            animation: popUp 0.22s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        @keyframes popUp {
+            from { opacity: 0; transform: scale(0.85); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+
+        /* Close ✕ button inside popup */
+        .drill-close-btn {
+            position: absolute;
+            top: 12px;
+            right: 14px;
+            background: #eee;
+            color: #555;
+            border: none;
+            border-radius: 50% !important;
+            width: 30px;
+            height: 30px;
+            padding: 0 !important;
+            font-size: 16px !important;
+            line-height: 30px;
+            text-align: center;
+            cursor: pointer;
+            box-shadow: none !important;
+        }
+        .drill-close-btn:hover { background: #ddd; color: #111; transform: none !important; }
+
+        .drill-panel h3 {
+            margin: 0 0 16px 0;
+            color: #8e44ad;
+            font-size: 18px;
+        }
+
+        .drill-controls {
+            display: flex;
+            gap: 14px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .drill-controls label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .drill-controls input[type="number"] {
+            padding: 7px 10px;
+            border: 1.5px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            width: 90px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .drill-controls input[type="number"]:focus { border-color: #8e44ad; }
+
+        /* Drill action buttons */
+        .btn-start-drill { background-color: #8e44ad; }
+        .btn-stop-drill  { background-color: #c0392b; }
+        .btn-start-drill:disabled,
+        .btn-stop-drill:disabled  { opacity: 0.45; cursor: not-allowed; }
+
+        /* Drill status line */
+        .drill-status {
+            font-size: 14px;
+            font-weight: 600;
+            color: #8e44ad;
+            min-height: 20px;
+            padding-top: 2px;
+            margin-bottom: 14px;
+        }
+
+        /* Drill playback controls (inside popup, shown when drill is running) */
+        .drill-playback-controls {
+            border-top: 1px solid #f0e6fa;
+            padding-top: 14px;
+        }
+        .drill-playback-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #aaa;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .drill-playback-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .drill-playback-row button {
+            padding: 9px 16px !important;
+            border-radius: 8px !important;
+            font-size: 13px !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;
+            transition: transform 0.15s ease, opacity 0.15s ease !important;
+        }
+        .drill-playback-row button:hover {
+            transform: translateY(-1px) !important;
+            opacity: 0.9;
+        }
+        .btn-drill-prev  { background-color: #2980b9; }
+        .btn-drill-pause { background-color: #e67e22; }
+        .btn-drill-next  { background-color: #2980b9; }
+        .btn-drill-stop-inline { background-color: #c0392b; }
+        .btn-drill-pause.resumed { background-color: #27ae60; }
+
+        /* Mini drill bar inside floating-controls (shown when drill runs and popup is closed) */
+        .floating-drill-mini {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(142, 68, 173, 0.92);
+            padding: 8px 12px;
+            border-radius: 14px;
+            box-shadow: 0 4px 16px rgba(142,68,173,0.35);
+            backdrop-filter: blur(6px);
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            max-width: 280px;
+        }
+        .floating-drill-mini-status {
+            font-size: 11px;
+            font-weight: 700;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 140px;
+        }
+        .floating-drill-mini button {
+            padding: 5px 9px !important;
+            border-radius: 6px !important;
+            font-size: 12px !important;
+            box-shadow: none !important;
+            background: rgba(255,255,255,0.22) !important;
+            border: 1px solid rgba(255,255,255,0.35) !important;
+            transition: background 0.15s ease !important;
+        }
+        .floating-drill-mini button:hover {
+            background: rgba(255,255,255,0.38) !important;
+            transform: none !important;
+        }
+        .floating-drill-mini .mini-pause-active {
+            background: rgba(46,204,113,0.55) !important;
+        }
+
+        /* ======================================================
+           SCRIPT LINE CARDS
+           ====================================================== */
+        .script-line { background: white; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); overflow: hidden; transition: box-shadow 0.3s ease; }
+
+        /* Active drill line — purple glow ring */
+        .drill-active {
+            box-shadow: 0 0 0 3px #8e44ad, 0 4px 18px rgba(142, 68, 173, 0.30) !important;
+        }
+        .drill-active .english-box {
+            background-color: #f5eef8 !important;
+            border-left-color: #8e44ad !important;
+        }
+
+        /* इंग्लिश टेक्स्ट */
+        .english-box { padding: 15px 20px; font-size: 18px; font-weight: bold; cursor: pointer; background-color: #fff; border-left: 5px solid #3498db; transition: background 0.3s; }
+        .english-box:hover { background-color: #f0f8ff; }
+
+        /* छुपा हुआ हिस्सा */
+        .details-box { display: none; padding: 15px 20px; background-color: #fafafa; border-top: 1px solid #eee; }
+        .details-box p { margin: 10px 0; font-size: 16px; line-height: 1.5; }
+        .details-box strong { color: #e74c3c; }
+
+        /* ऑडियो बटन्स */
+        .audio-controls { margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap; }
+        button { padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; color: white; transition: opacity 0.2s; }
+        .btn-eng  { background-color: #3498db; }
+        .btn-hin  { background-color: #2ecc71; }
+        .btn-mean { background-color: #9b59b6; }
+        .btn-stop { background-color: #e74c3c; }
+        .btn-done { background-color: #f39c12; }
+        button:hover { opacity: 0.8; }
+
+        /* काम पूरा होने के बाद का डिज़ाइन */
+        .completed { opacity: 0.5; }
+        .completed .english-box { background-color: #e8e8e8; border-left: 5px solid #bdc3c7; text-decoration: line-through; color: #7f8c8d; }
+
+        /* ======================================================
+           PROJECT SELECTOR OVERLAY
+           ====================================================== */
+        #project-selector-overlay {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #1a0533 100%);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            overflow-y: auto;
+        }
+        .ps-logo { font-size: 48px; margin-bottom: 14px; }
+        .ps-title {
+            font-size: 26px; font-weight: 800; color: #fff;
+            margin-bottom: 8px; text-align: center;
+        }
+        .ps-sub {
+            font-size: 14px; color: rgba(255,255,255,0.45);
+            margin-bottom: 40px; text-align: center;
+        }
+        .ps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 18px;
+            width: 100%;
+            max-width: 860px;
+        }
+        .ps-card {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.13);
+            border-radius: 16px;
+            padding: 26px 22px 22px;
+            cursor: pointer;
+            transition: transform 0.22s, box-shadow 0.22s, background 0.22s;
+            border-top: 4px solid var(--card-color, #8e44ad);
+            position: relative;
+            overflow: hidden;
+        }
+        .ps-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 60%);
+            pointer-events: none;
+        }
+        .ps-card:hover {
+            transform: translateY(-7px);
+            background: rgba(255,255,255,0.13);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+        }
+        .ps-card-icon { font-size: 34px; margin-bottom: 12px; }
+        .ps-card-name {
+            font-size: 15px; font-weight: 700; color: #fff;
+            margin-bottom: 6px; line-height: 1.3;
+        }
+        .ps-card-desc {
+            font-size: 12px; color: rgba(255,255,255,0.42); line-height: 1.5;
+        }
+
+        /* Switch Project button (shown in header after project loaded) */
+        .switch-project-btn {
+            position: absolute; top: 10px; left: 0;
+            background: rgba(52,73,94,0.85);
+            color: #ecf0f1; border: none;
+            padding: 7px 13px; border-radius: 6px;
+            cursor: pointer; font-size: 13px; font-weight: 600;
+            backdrop-filter: blur(4px);
+            transition: background 0.18s;
+        }
+        .switch-project-btn:hover { background: rgba(44,62,80,0.95); }
+    </style>
+</head>
+<body>
+
+    <!-- ── Project Selector Overlay ── -->
+    <div id="project-selector-overlay" style="display:none;">
+        <div class="ps-logo">🎬</div>
+        <div class="ps-title">🎮 Script Analyzer Tool</div>
+        <div class="ps-sub">अपना project चुनें</div>
+        <div class="ps-grid" id="ps-grid"></div>
+    </div>
+
+    <div class="max-width">
+        <button class="reset-btn" onclick="clearProgress()">🔄 Reset Progress</button>
+        <button class="switch-project-btn" id="switch-project-btn" onclick="showProjectSelector()" style="display:none;">🔀 Switch Project</button>
+
+        <h1>🎙️ Script Analyzer Tool</h1>
+
+        <!-- ── Drill Popup Overlay (hidden by default) ── -->
+        <div id="drill-overlay" class="drill-overlay" style="display: none;">
+            <div class="drill-panel">
+                <button class="drill-close-btn" onclick="toggleDrillPanel()" title="Close">✕</button>
+                <button class="drill-close-btn" onclick="openPiP()" id="pip-popup-btn" title="Pop Out Controls" style="right:52px; background:#16a085; color:white; font-size:13px !important;">📺</button>
+                <h3>🎯 Drill Mode</h3>
+                <div class="drill-controls">
+                    <label>Start Line ID
+                        <input type="number" id="drill-start-id" value="1" min="1">
+                    </label>
+                    <label>Repetitions
+                        <input type="number" id="drill-reps" value="3" min="1" max="50">
+                    </label>
+                    <button class="btn-start-drill" id="btn-start-drill" onclick="startDrill()">▶ Start Drill</button>
+                    <button class="btn-stop-drill"  id="btn-stop-drill"  onclick="stopDrill()" disabled>⏹ Stop Drill</button>
+                </div>
+                <div class="drill-status" id="drill-status"></div>
+
+                <!-- Playback controls — shown only when drill is running -->
+                <div id="drill-playback-controls" class="drill-playback-controls" style="display:none;">
+                    <div class="drill-playback-label">Playback Controls</div>
+                    <div class="drill-playback-row">
+                        <button class="btn-drill-prev" onclick="jumpDrill(-1)" title="Previous Line">⏮ Prev</button>
+                        <button class="btn-drill-pause" id="drill-pause-btn" onclick="togglePauseDrill()">⏸ Pause</button>
+                        <button class="btn-drill-next" onclick="jumpDrill(1)" title="Next Line">⏭ Next</button>
+                        <button class="btn-drill-stop-inline" onclick="stopDrill()">⏹ Stop</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="script-container"></div>
+    </div>
+
+    <!-- ── Floating Controls — Bottom-Right ── -->
+    <div class="floating-controls">
+        <!-- Mini drill bar: shows when drill runs and popup is closed -->
+        <div id="floating-drill-mini" class="floating-drill-mini" style="display:none;">
+            <span class="floating-drill-mini-status" id="floating-drill-status">🎯 Drilling...</span>
+            <button onclick="jumpDrill(-1)" title="Previous Line">⏮</button>
+            <button id="floating-pause-btn" onclick="togglePauseDrill()" title="Pause / Resume">⏸</button>
+            <button onclick="jumpDrill(1)" title="Next Line">⏭</button>
+            <button onclick="stopDrill()" title="Stop Drill">⏹</button>
+            <button onclick="toggleDrillPanel()" title="Open Panel" style="background:rgba(255,255,255,0.38) !important;">📋</button>
+        </div>
+
+        <button class="btn-autoplay" id="autoplay-btn" onclick="toggleAutoPlay()">
+            🔁 Auto-Play: OFF
+        </button>
+        <button class="btn-drill" onclick="toggleDrillPanel()">
+            🎯 Drill Mode
+        </button>
+        <button class="btn-pip" id="pip-open-btn" onclick="openPiP()">
+            📺 Pop Out
+        </button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
